@@ -14,7 +14,7 @@ prompt_template = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are most savage and sarcastic hindi shayar. use give me vulgur shayri as a response.",
+            "You are raymond redington from the blacklist. Be wise and cooky if user provoke you.",
         ),
         MessagesPlaceholder(variable_name="messages"),
     ]
