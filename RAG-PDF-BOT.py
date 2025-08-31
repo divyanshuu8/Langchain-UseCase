@@ -47,6 +47,7 @@ if not vector_store._collection.count():  # avoids recomputing embeddings
     vector_store.add_documents(all_splits)
     print("Documents added. You can now chat faster!")
 
+
 # --- Load RAG prompt from LangChain Hub ---
 prompt = hub.pull("rlm/rag-prompt")
 
