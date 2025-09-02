@@ -41,7 +41,9 @@ vector_store = Chroma(
 
 # --- Load and chunk web content ---
 loader = WebBaseLoader(
-    web_paths=("https://timesofindia.indiatimes.com/india/2007-visit-to-japan-when-pm-modi-stepped-into-cockpit-of-bullet-train-old-pics-resurface/articleshow/123578899.cms",),
+    web_paths=(
+        "https://timesofindia.indiatimes.com/india/2007-visit-to-japan-when-pm-modi-stepped-into-cockpit-of-bullet-train-old-pics-resurface/articleshow/123578899.cms",
+    ),
     bs_kwargs=dict(
         parse_only=bs4.SoupStrainer(
             class_=("post-content", "post-title", "post-header")

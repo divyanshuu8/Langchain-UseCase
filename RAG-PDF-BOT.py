@@ -7,11 +7,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- LangChain imports ---
-from langchain import hub
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langgraph.graph import START, StateGraph
+from langchain_core.prompts import ChatPromptTemplate
 
 # --- Gemini 1.5 LLM ---
 from langchain.chat_models import init_chat_model
@@ -34,11 +34,11 @@ vector_store = Chroma(
 )
 
 # --- Load PDF and split into documents ---
-pdf_path = "Docs/Resume-KPMG.pdf"  # <-- Replace with your PDF file path
+pdf_path = "Docs/Resume-KPMG.pdf"  # <-- Replace with your PDF path
 loader = PyPDFLoader(pdf_path)
 docs = loader.load()
 
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 all_splits = text_splitter.split_documents(docs)
 
 # --- Add documents to vector store only if empty ---
@@ -47,26 +47,47 @@ if not vector_store._collection.count():  # avoids recomputing embeddings
     vector_store.add_documents(all_splits)
     print("Documents added. You can now chat faster!")
 
+# --- Custom RAG prompt ---
+prompt = ChatPromptTemplate.from_template(
+    """You are a professional and helpful AI assistant for clients. 
 
-# --- Load RAG prompt from LangChain Hub ---
-prompt = hub.pull("rlm/rag-prompt")
+Conversation so far:
+{history}
+
+Rules:
+1. If the user is casual (greetings, thanks, "ok ok"), reply naturally as a chatbot would.
+2. If the user asks about the document, answer strictly from the context below.
+3. If no relevant answer exists in the context, reply: "I am not aware of that."
+
+Context:
+{context}
+
+Question: {question}
+Answer:"""
+)
 
 
-# --- Define state ---
+# --- Define state with memory ---
 class State(TypedDict):
     question: str
     context: List[Document]
     answer: str
+    history: str  # keeps chat history as a string
+
+
+chat_history = ""  # global memory
 
 
 def retrieve(state: State):
-    retrieved_docs = vector_store.similarity_search(state["question"], k=4)
+    retrieved_docs = vector_store.similarity_search(state["question"], k=2)
     return {"context": retrieved_docs}
 
 
 def generate(state: State):
-    docs_content = "\n\n".join(doc.page_content for doc in state["context"])
-    messages = prompt.invoke({"question": state["question"], "context": docs_content})
+    docs_content = "\n\n".join(doc.page_content[:500] for doc in state["context"])
+    messages = prompt.format_messages(
+        question=state["question"], context=docs_content, history=state["history"]
+    )
     response = llm.invoke(messages)
     return {"answer": response.content}
 
@@ -76,14 +97,24 @@ graph_builder = StateGraph(State).add_sequence([retrieve, generate])
 graph_builder.add_edge(START, "retrieve")
 graph = graph_builder.compile()
 
-# --- Chat loop ---
-print("RAG Bot (PDF) is ready! Type 'exit' to quit.")
+# --- Chat loop with memory ---
+print("RAG Bot (PDF + Memory) is ready! Type 'exit' to quit.")
 while True:
     user_question = input("\nYou: ")
     if user_question.lower() in ["exit", "quit"]:
         break
 
-    state: State = {"question": user_question, "context": [], "answer": ""}
+    state: State = {
+        "question": user_question,
+        "context": [],
+        "answer": "",
+        "history": chat_history,
+    }
+
     state.update(retrieve(state))
     state.update(generate(state))
+
+    # update memory
+    chat_history += f"\nUser: {state['question']}\nBot: {state['answer']}"
+
     print("\nBot:", state["answer"])
